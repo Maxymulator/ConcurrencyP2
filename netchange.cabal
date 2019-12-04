@@ -1,0 +1,42 @@
+name:           netchange
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/netchange#readme>
+homepage:       https://github.com/githubuser/netchange#readme
+bug-reports:    https://github.com/githubuser/netchange/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2019 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  1.12
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type:     git
+  location: https://github.com/githubuser/netchange
+
+executable netchange
+  default-language: Haskell2010
+  hs-source-dirs:   src
+  main-is:          Main.hs
+  -- main-is:          Solution.hs
+
+  other-modules:
+      Paths_netchange
+
+  ghc-options:
+      -Wall
+      -threaded
+      -rtsopts
+      -with-rtsopts=-N
+
+  build-depends:
+      base >=4.7 && <5
+    , bytestring
+    , dejafu
+    , stm
+    , network
+
