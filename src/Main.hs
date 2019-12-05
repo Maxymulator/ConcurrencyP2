@@ -10,6 +10,8 @@ import System.Environment
 import System.IO
 import Network.Socket
 
+type RoutingTable = TVar [(Int, Int, Int)]
+
 main :: IO ()
 main = do
   hSetBuffering stdout NoBuffering
@@ -30,7 +32,10 @@ main = do
   -- Let a seperate thread listen for incomming connections
   _ <- forkIO $ listenForConnections serverSocket
 
-  -- As an example, connect to the first neighbour. This just
+  
+  
+  connectToNeighbours me neighbours
+  {- As an example, connect to the first neighbour. This just
   -- serves as an example on using the network functions in Haskell
   case neighbours of
     [] -> putStrLn "I have no neighbours :("
@@ -48,8 +53,40 @@ main = do
       message <- hGetLine chandle
       putStrLn $ "Neighbour send a message back: " ++ show message
       hClose chandle
-
+  -}
   threadDelay 1000000000
+
+connectToNeighbours :: RoutingTable -> Int -> [Int] -> IO ()
+connectToNeighbours _ _ [] = putStrLn "//No more neighbours"
+connectToNeighbours nbu m (x:xs) = do
+  putStrLn $ "//Establishing connection with port: " ++ show x
+  xSocket <- connectSocket x
+  xHandle <- socketToHandle xSocket ReadWriteMode
+  --TODO: add x to Nbu, Nbu possibly a [(Int, Int, Int)] with [(Destination, Distance, Closest neighbour)]
+  atomically $ do
+    let newEntry = [(x, 1, x)]
+    modifyTVar' nbu (newEntry :)
+
+  --TODO: fork thread to handle this connection
+  _ <- forkIO $ handleNeighbour' xHandle m x
+  connectToNeighbours m xs
+
+handleNeighbour :: Handle -> Int -> Int -> IO ()
+handleNeighbour xHandle m x = do
+  hPutStrLn xHandle $ "//Hi process " ++ show x ++ ", i'm process " ++ show m ++ ". Are we connected?"
+  putStrLn $ "//Sent ACK-request to port: " ++ show x
+  message <- hGetLine xHandle
+  putStrLn $ "Connected " ++ show x
+  handleNeighbour' xHandle
+  where
+    handleNeighbour' :: Handle -> IO ()
+    handleNeighbour' xHandle = do
+      message <- hGetLine xHandle
+      _ <- handleMessage message
+      handleNeighbour' xHandle
+    
+handleMessage :: String -> IO ()
+handleMessage s = return ()
 
 readCommandLineArguments :: IO (Int, [Int])
 readCommandLineArguments = do
@@ -83,7 +120,7 @@ handleConnection :: Socket -> IO ()
 handleConnection connection = do
   putStrLn "Got new incomming connection"
   chandle <- socketToHandle connection ReadWriteMode
-  hPutStrLn chandle "Welcome"
+  hPutStrLn chandle "ACK"
   message <- hGetLine chandle
   putStrLn $ "Incomming connection send a message: " ++ message
   hClose chandle
