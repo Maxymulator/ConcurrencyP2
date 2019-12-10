@@ -69,9 +69,9 @@ Mogelijk printen in STM, zou dit concurrent zijn? <- vraag aan TA
 -}
 
 connectToNeighbours :: MVar a -> TVar RoutingTable -> Int -> [Int] -> IO ()
-connectToNeighbours writeLock _ _ [] = withMVar writeLock (\_ -> putStrLn "//No more neighbours")
+connectToNeighbours writeLock _ _ [] = putStrLnConc writeLock "//No more neighbours"
 connectToNeighbours writeLock nbu m (x:xs) = do
-  withMVar writeLock (\_ -> putStrLn $ "//Establishing connection with port: " ++ show x)
+  putStrLnConc writeLock $ "//Establishing connection with port: " ++ show x
   xSocket <- connectSocket x
   xHandle <- socketToHandle xSocket ReadWriteMode
   --TODO: add x to Nbu, Nbu possibly a [(Int, Int, Int)] with [(Destination, Distance, Closest neighbour)]
@@ -89,9 +89,9 @@ addEntryToRoutingTable x (RT xs) = RT (x:xs)
 handleNeighbour :: MVar a -> Handle -> Int -> Int -> IO ()
 handleNeighbour writeLock xHandle m x = do
   hPutStrLn xHandle $ "//Hi process " ++ show x ++ ", i'm process " ++ show m ++ ". Are we connected?"
-  withMVar writeLock (\_ -> putStrLn $ "//Sent ACK-request to port: " ++ show x)
+  putStrLnConc writeLock $ "//Sent ACK-request to port: " ++ show x
   message <- hGetLine xHandle
-  withMVar writeLock (\_ -> putStrLn $ "Connected " ++ show x)
+  putStrLnConc writeLock $ "Connected " ++ show x
   handleNeighbour' xHandle
   where
     handleNeighbour' :: Handle -> IO ()
@@ -125,6 +125,9 @@ printRoutingtable writeLock m nbu = do
 
 ppRTEntry :: RoutingTableEntry -> String
 ppRTEntry (RTE (dest, dist, neighb)) = (show dest) ++ " " ++ (show dist) ++ " " ++ (show neighb)
+
+putStrLnConc :: MVar a -> String -> IO ()
+putStrLnConc l s = withMVar l (\_ -> putStrLn s)
 
 {- Template -}
 readCommandLineArguments :: IO (Int, [Int])
