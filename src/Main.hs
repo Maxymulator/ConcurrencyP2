@@ -10,7 +10,8 @@ import System.Environment
 import System.IO
 import Network.Socket
 
-type RoutingTable = TVar [(Int, Int, Int)]
+data RoutingTable = RT [RoutingTableEntry]
+data RoutingTableEntry = RTE (Int,Int,Int)
 
 main :: IO ()
 main = do
@@ -32,9 +33,14 @@ main = do
   -- Let a seperate thread listen for incomming connections
   _ <- forkIO $ listenForConnections serverSocket
 
-  
-  
-  connectToNeighbours me neighbours
+  -- Create the local routing table
+  nbu <- newTVarIO $ RT []
+  writeLock <- newMVar ()
+
+  connectToNeighbours writeLock nbu me neighbours
+  putStrLn " "
+  filledNbu <- readTVarIO nbu
+  printRoutingtable writeLock me filledNbu
   {- As an example, connect to the first neighbour. This just
   -- serves as an example on using the network functions in Haskell
   case neighbours of
@@ -56,27 +62,36 @@ main = do
   -}
   threadDelay 1000000000
 
-connectToNeighbours :: RoutingTable -> Int -> [Int] -> IO ()
-connectToNeighbours _ _ [] = putStrLn "//No more neighbours"
-connectToNeighbours nbu m (x:xs) = do
-  putStrLn $ "//Establishing connection with port: " ++ show x
+{-
+Mogelijk printen in een eigen thread, welke een string van een MVar leest en deze daarna concurrently print naar de console.
+Mogelijk printen met een MVar als lock (huidig)
+Mogelijk printen in STM, zou dit concurrent zijn? <- vraag aan TA
+-}
+
+connectToNeighbours :: MVar a -> TVar RoutingTable -> Int -> [Int] -> IO ()
+connectToNeighbours writeLock _ _ [] = withMVar writeLock (\_ -> putStrLn "//No more neighbours")
+connectToNeighbours writeLock nbu m (x:xs) = do
+  withMVar writeLock (\_ -> putStrLn $ "//Establishing connection with port: " ++ show x)
   xSocket <- connectSocket x
   xHandle <- socketToHandle xSocket ReadWriteMode
   --TODO: add x to Nbu, Nbu possibly a [(Int, Int, Int)] with [(Destination, Distance, Closest neighbour)]
   atomically $ do
-    let newEntry = [(x, 1, x)]
-    modifyTVar' nbu (newEntry :)
+    let newEntry = RTE (x, 1, x)
+    modifyTVar' nbu (addEntryToRoutingTable newEntry)
 
   --TODO: fork thread to handle this connection
-  _ <- forkIO $ handleNeighbour' xHandle m x
-  connectToNeighbours m xs
+  _ <- forkIO $ handleNeighbour writeLock xHandle m x
+  connectToNeighbours writeLock nbu m xs
 
-handleNeighbour :: Handle -> Int -> Int -> IO ()
-handleNeighbour xHandle m x = do
+addEntryToRoutingTable :: RoutingTableEntry -> RoutingTable -> RoutingTable
+addEntryToRoutingTable x (RT xs) = RT (x:xs)
+
+handleNeighbour :: MVar a -> Handle -> Int -> Int -> IO ()
+handleNeighbour writeLock xHandle m x = do
   hPutStrLn xHandle $ "//Hi process " ++ show x ++ ", i'm process " ++ show m ++ ". Are we connected?"
-  putStrLn $ "//Sent ACK-request to port: " ++ show x
+  withMVar writeLock (\_ -> putStrLn $ "//Sent ACK-request to port: " ++ show x)
   message <- hGetLine xHandle
-  putStrLn $ "Connected " ++ show x
+  withMVar writeLock (\_ -> putStrLn $ "Connected " ++ show x)
   handleNeighbour' xHandle
   where
     handleNeighbour' :: Handle -> IO ()
@@ -85,9 +100,33 @@ handleNeighbour xHandle m x = do
       _ <- handleMessage message
       handleNeighbour' xHandle
     
+{-
+m message
+c connect
+d disconnect
+-}
 handleMessage :: String -> IO ()
-handleMessage s = return ()
+handleMessage (x:_:xs) | x == 'm' = return ()--handle xs -> incomming message
+                       | x == 'c' = return ()--handle xs -> new connection
+                       | x == 'd' = return ()--handle xs -> disconnection
+                       | otherwise = error "handleMessage got an unknown identifier"
 
+printRoutingtable :: MVar a -> Int -> RoutingTable -> IO ()
+printRoutingtable writeLock m nbu = do
+  withMVar writeLock (\_ -> do
+    putStrLn $ (show m) ++ " 0 local"
+    printRoutingtable' nbu)
+  where
+     printRoutingtable' :: RoutingTable -> IO ()
+     printRoutingtable' (RT []) = return ()
+     printRoutingtable' (RT (x:xs)) = do
+      putStrLn $ ppRTEntry x
+      printRoutingtable' (RT xs)
+
+ppRTEntry :: RoutingTableEntry -> String
+ppRTEntry (RTE (dest, dist, neighb)) = (show dest) ++ " " ++ (show dist) ++ " " ++ (show neighb)
+
+{- Template -}
 readCommandLineArguments :: IO (Int, [Int])
 readCommandLineArguments = do
   args <- getArgs
